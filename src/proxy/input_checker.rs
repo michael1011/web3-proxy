@@ -1,12 +1,15 @@
-use hyper::{StatusCode, Body, Response};
-use crate::proxy::hyper_helpers::{build_wrong_argument_response, build_error_response};
-use web3::{Web3, transports};
-use web3::types::{U64};
+use crate::proxy::hyper_helpers::{build_error_response, build_wrong_argument_response};
+use hyper::{Body, Response, StatusCode};
 use std::ops::Add;
+use web3::types::U64;
+use web3::{transports, Web3};
 
 static MAX_BLOCK_TO_QUERY: u64 = 1000;
 
-pub async fn check_get_logs(web3: Web3<transports::Http>, params: &serde_json::Value) -> Option<(Response<Body>, String)> {
+pub async fn check_get_logs(
+    web3: Web3<transports::Http>,
+    params: &serde_json::Value,
+) -> Option<(Response<Body>, String)> {
     if !params.is_array() {
         return Option::from(build_wrong_argument_response("params", "array"));
     }
@@ -14,7 +17,10 @@ pub async fn check_get_logs(web3: Web3<transports::Http>, params: &serde_json::V
     let params_array = params.as_array().unwrap();
 
     if !params_array[0].is_object() {
-        return Option::from(build_error_response(StatusCode::BAD_REQUEST, &"\"params\" is not formatted correctly".to_string()));
+        return Option::from(build_error_response(
+            StatusCode::BAD_REQUEST,
+            &"\"params\" is not formatted correctly".to_string(),
+        ));
     }
 
     let params = params_array[0].as_object().unwrap();
@@ -28,16 +34,24 @@ pub async fn check_get_logs(web3: Web3<transports::Http>, params: &serde_json::V
 
     match latest_block_number_result {
         Ok(latest_block_number) => {
-            let from_block = parse_json_block_number(params.get("fromBlock"), latest_block_number).as_u64();
-            let to_block = parse_json_block_number(params.get("toBlock"), latest_block_number).as_u64();
+            let from_block =
+                parse_json_block_number(params.get("fromBlock"), latest_block_number).as_u64();
+            let to_block =
+                parse_json_block_number(params.get("toBlock"), latest_block_number).as_u64();
 
             if to_block - from_block > MAX_BLOCK_TO_QUERY {
-                return Option::from(build_error_response(StatusCode::BAD_REQUEST, &format!("only up to {} blocks can be queried", MAX_BLOCK_TO_QUERY)));
+                return Option::from(build_error_response(
+                    StatusCode::BAD_REQUEST,
+                    &format!("only up to {} blocks can be queried", MAX_BLOCK_TO_QUERY),
+                ));
             }
 
             Option::None
         }
-        Err(error) => Option::from(build_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()))
+        Err(error) => Option::from(build_error_response(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            &error.to_string(),
+        )),
     }
 }
 
@@ -46,7 +60,7 @@ fn parse_json_block_number(value: Option<&serde_json::Value>, latest_block: U64)
         let unwrapped = value.unwrap();
 
         if unwrapped.is_u64() {
-            return U64::from(unwrapped.as_u64().unwrap())
+            return U64::from(unwrapped.as_u64().unwrap());
         } else if unwrapped.is_string() {
             match unwrapped.as_str().unwrap() {
                 "earliest" | "pending" => return latest_block.add(1),

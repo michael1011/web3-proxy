@@ -1,21 +1,20 @@
 mod proxy;
+mod service;
 
-use std::convert::Infallible;
-use log::{info, error};
-use simple_logger::{SimpleLogger};
-use hyper::{Server, Response, Body, Request};
-use hyper::service::{make_service_fn, service_fn};
+use hyper::Server;
+use log::{debug, error, info, trace};
+use simple_logger::SimpleLogger;
+use structopt::StructOpt;
 use web3::{transports, Web3};
-use crate::proxy::RouterTrait;
 
-static WEB3_PROVIDER: &str = "http://10.0.1.18:8545";
+#[derive(StructOpt, Debug)]
+#[structopt(name = "web3-proxy")]
+struct Args {
+    #[structopt(short, long, default_value = "3000")]
+    port: u16,
 
-async fn handle_request(request: Request<Body>) -> Result<Response<Body>, hyper::Error> {
-    let transport = transports::Http::new(WEB3_PROVIDER).expect("Could not get HTTP provider");
-    let web3 = Web3::new(transport);
-    let response = proxy::Router { web3 }.route(request).await;
-
-    response
+    #[structopt(short, long, default_value = "http://127.0.0.1:8545")]
+    web3_endpoint: String,
 }
 
 // TODO: websocket support for clients
@@ -26,18 +25,37 @@ async fn main() {
         .with_level(log::LevelFilter::Info)
         .with_module_level("web3_proxy", log::LevelFilter::Trace)
         .with_module_level("web3_proxy::proxy::router", log::LevelFilter::Trace)
-        .init().unwrap();
+        .init()
+        .unwrap();
+
+    let args = Args::from_args();
 
     info!("Starting web3-proxy");
 
-    info!("Using web3 HTTP provider: {}", WEB3_PROVIDER);
+    info!("Using web3 HTTP provider: {}", args.web3_endpoint);
 
-    let make_service = make_service_fn(|_conn| {
-        async { Ok::<_, Infallible>(service_fn(handle_request))}
-    });
+    let transport =
+        transports::Http::new(&args.web3_endpoint).expect("Could not get HTTP provider");
+    let web3 = Web3::new(transport);
 
-    let addr = ([0, 0, 0, 0], 3000).into();
-    let server = Server::bind(&addr).serve(make_service);
+    trace!("Sanity checking web3 HTTP provider");
+
+    match web3.clone().web3().client_version().await {
+        Ok(client_version) => {
+            debug!("Connected to web3 provider: {}", client_version);
+        }
+        Err(error) => {
+            error!("Could not connect to web3 provider: {}", error);
+            // EX_UNAVAILABLE
+            // https://www.freebsd.org/cgi/man.cgi?query=sysexits&apropos=0&sektion=0&manpath=FreeBSD+11.2-stable&arch=default&format=html
+            std::process::exit(69);
+        }
+    }
+
+    let router = proxy::Router { web3 };
+
+    let addr = ([0, 0, 0, 0], args.port).into();
+    let server = Server::bind(&addr).serve(service::MakeSvc { router });
 
     info!("Listening on: {}", addr);
 

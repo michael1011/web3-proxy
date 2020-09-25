@@ -1,16 +1,17 @@
-use web3::{transports, Web3};
 use async_trait::async_trait;
-use hyper::{Request, Body, Response};
+use hyper::{Body, Request, Response};
+use web3::{transports, Web3};
 
-mod router;
 mod hyper_helpers;
 mod input_checker;
+mod router;
 
 #[async_trait]
 pub trait RouterTrait {
     async fn route(&self, req: Request<Body>) -> Result<Response<Body>, hyper::Error>;
 }
 
+#[derive(Clone)]
 pub struct Router {
     pub web3: Web3<transports::Http>,
 }

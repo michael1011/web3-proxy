@@ -1,13 +1,22 @@
+use crate::proxy::hyper_helpers::{
+    build_error_response, build_web3_response, build_wrong_argument_response, parse_json_request,
+};
 use crate::proxy::input_checker;
-use crate::proxy::hyper_helpers::{parse_json_request, build_wrong_argument_response, build_error_response, build_web3_response};
-use log::{warn, debug, trace, error};
-use web3::{Web3, transports, Transport};
-use hyper::{Request, Body, Response, StatusCode, Method};
+use hyper::{Body, Method, Request, Response, StatusCode};
+use log::{debug, error, trace, warn};
+use web3::{transports, Transport, Web3};
 
 // TODO: rpc error should return data and 200 status code
 // TODO: essentially all errors should be in the default web3 format
-pub async fn route_request(web3: Web3<transports::Http>, req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
-    trace!("Got {} request for: {}", req.method().as_str(), req.uri().path());
+pub async fn route_request(
+    web3: Web3<transports::Http>,
+    req: Request<Body>,
+) -> Result<Response<Body>, hyper::Error> {
+    debug!(
+        "Got {} request for: {}",
+        req.method().as_str(),
+        req.uri().path()
+    );
 
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/") => Ok(proxy_web3(web3, req).await),
@@ -15,7 +24,7 @@ pub async fn route_request(web3: Web3<transports::Http>, req: Request<Body>) -> 
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
             .body(Body::from("404 - not found"))
-            .unwrap())
+            .unwrap()),
     }
 }
 
@@ -40,8 +49,13 @@ async fn proxy_web3(web3: Web3<transports::Http>, req: Request<Body>) -> Respons
 
             match method {
                 "eth_getLogs" => {
-                    debug!("Sanity checking {} parameters: {}", method, json["params"].to_string());
-                    let input_check = input_checker::check_get_logs(web3.clone(), &json["params"]).await;
+                    debug!(
+                        "Sanity checking {} parameters: {}",
+                        method,
+                        json["params"].to_string()
+                    );
+                    let input_check =
+                        input_checker::check_get_logs(web3.clone(), &json["params"]).await;
 
                     if input_check.is_some() {
                         let (response, error) = input_check.unwrap();
@@ -49,8 +63,8 @@ async fn proxy_web3(web3: Web3<transports::Http>, req: Request<Body>) -> Respons
 
                         return response;
                     }
-                },
-                _ => {},
+                }
+                _ => {}
             }
 
             let mut parameters: Vec<jsonrpc_core::Value> = Vec::new();
@@ -61,17 +75,24 @@ async fn proxy_web3(web3: Web3<transports::Http>, req: Request<Body>) -> Respons
                 trace!("Not passing parameters to web3 provider, because none a non array type was provided");
             }
 
-            debug!("Sending {} request to web3 provider with arguments: {:?}", method, parameters);
+            debug!(
+                "Sending {} request to web3 provider with arguments: {:?}",
+                method, parameters
+            );
 
             let web3_response_result = web3.transport().execute(method, parameters).await;
 
             match web3_response_result {
                 Ok(web3_response) => {
-                    debug!("Got response from web3 provider: {}", web3_response.to_string());
+                    debug!(
+                        "Got response from web3 provider: {}",
+                        web3_response.to_string()
+                    );
                     build_web3_response(request_id, web3_response)
                 }
                 Err(error) => {
-                    let error_response = build_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
+                    let error_response =
+                        build_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
                     error!("Request to web3 provider failed: {}", error_response.1);
 
                     error_response.0

@@ -6,7 +6,6 @@ use hyper::{Body, Method, Request, Response, StatusCode};
 use log::{debug, error, trace, warn};
 use web3::{transports, Transport, Web3};
 
-// TODO: rpc error should return data and 200 status code
 // TODO: essentially all errors should be in the default web3 format
 pub async fn route_request(
     web3: Web3<transports::Http>,
@@ -91,11 +90,20 @@ async fn proxy_web3(web3: Web3<transports::Http>, req: Request<Body>) -> Respons
                     build_web3_response(request_id, web3_response)
                 }
                 Err(error) => {
-                    let error_response =
-                        build_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string());
-                    error!("Request to web3 provider failed: {}", error_response.1);
+                    error!("Request to web3 provider failed: {}", error.to_string());
 
-                    error_response.0
+                    match error.clone() {
+                        web3::Error::Rpc(rpc_error) => {
+                            return build_web3_response(request_id, serde_json::json!({
+                                "code": rpc_error.code.code(),
+                                "message": rpc_error.message,
+                                "data": rpc_error.data,
+                            }));
+                        }
+                        _ => {}
+                    }
+
+                    build_error_response(StatusCode::INTERNAL_SERVER_ERROR, &error.to_string()).0
                 }
             }
         }

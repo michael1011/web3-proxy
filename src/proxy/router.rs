@@ -3,7 +3,7 @@ use crate::proxy::hyper_helpers::{
 };
 use crate::proxy::input_checker;
 use hyper::{Body, Method, Request, Response, StatusCode};
-use log::{debug, error, trace, warn};
+use log::{debug, trace, warn};
 use web3::{transports, Transport, Web3};
 
 // TODO: essentially all errors should be in the default web3 format
@@ -11,7 +11,7 @@ pub async fn route_request(
     web3: Web3<transports::Http>,
     req: Request<Body>,
 ) -> Result<Response<Body>, hyper::Error> {
-    debug!(
+    trace!(
         "Got {} request for: {}",
         req.method().as_str(),
         req.uri().path()
@@ -90,15 +90,18 @@ async fn proxy_web3(web3: Web3<transports::Http>, req: Request<Body>) -> Respons
                     build_web3_response(request_id, web3_response)
                 }
                 Err(error) => {
-                    error!("Request to web3 provider failed: {}", error.to_string());
+                    warn!("Request to web3 provider failed: {}", error.to_string());
 
                     match error.clone() {
                         web3::Error::Rpc(rpc_error) => {
-                            return build_web3_response(request_id, serde_json::json!({
-                                "code": rpc_error.code.code(),
-                                "message": rpc_error.message,
-                                "data": rpc_error.data,
-                            }));
+                            return build_web3_response(
+                                request_id,
+                                serde_json::json!({
+                                    "code": rpc_error.code.code(),
+                                    "message": rpc_error.message,
+                                    "data": rpc_error.data,
+                                }),
+                            );
                         }
                         _ => {}
                     }

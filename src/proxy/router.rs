@@ -19,6 +19,8 @@ pub async fn route_request(
 
     match (req.method(), req.uri().path()) {
         (&Method::POST, "/") => Ok(proxy_web3(web3, req).await),
+        // This is required to support MetaMask connecting to the proxy
+        (&Method::OPTIONS, "/") => Ok(proxy_options()),
         (&Method::GET, "/info") => Ok(get_info(req)),
         _ => Ok(Response::builder()
             .status(StatusCode::NOT_FOUND)
@@ -38,15 +40,30 @@ async fn proxy_web3(web3: Web3<transports::Http>, req: Request<Body>) -> Respons
 
             let method = json["method"].as_str().unwrap();
 
-            if !json["id"].is_u64() {
-                let (response, error) = build_wrong_argument_response("method", "number");
+            let request_id: String;
+
+            if json["id"].is_string() {
+                request_id = json["id"].as_str().unwrap().to_string();
+            } else if json["id"].is_u64() {
+                request_id = json["id"].as_u64().unwrap().to_string();
+            } else {
+                let (response, error) = build_wrong_argument_response("id", "number or string");
                 log_rejected(method, error);
                 return response;
             }
 
-            let request_id = json["id"].as_u64().unwrap();
-
             match method {
+                // eth_accounts lists the accounts registered on your node which is no one's business
+                "eth_accounts" => {
+                    log_rejected(method, "method not allowed".to_string());
+                    return build_web3_response(request_id, serde_json::json!({
+                        "code": jsonrpc_core::ErrorCode::MethodNotFound.code(),
+                        "message": format!("the method {} does not exist/is not available", method),
+                    }));
+                }
+
+                // eth_getLogs can put an unreasonably high load on your node by letting it search for events
+                // since the genesis block or for a large range of blocks
                 "eth_getLogs" => {
                     debug!(
                         "Sanity checking {} parameters: {}",
@@ -83,7 +100,7 @@ async fn proxy_web3(web3: Web3<transports::Http>, req: Request<Body>) -> Respons
 
             match web3_response_result {
                 Ok(web3_response) => {
-                    debug!(
+                    trace!(
                         "Got response from web3 provider: {}",
                         web3_response.to_string()
                     );
@@ -115,6 +132,14 @@ async fn proxy_web3(web3: Web3<transports::Http>, req: Request<Body>) -> Respons
             response.0
         }
     }
+}
+
+fn proxy_options() -> Response<Body> {
+    Response::builder()
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(hyper::header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
+        .body(Body::empty())
+        .unwrap()
 }
 
 fn get_info(_req: Request<Body>) -> Response<Body> {

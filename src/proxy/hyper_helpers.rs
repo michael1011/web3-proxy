@@ -26,7 +26,7 @@ pub async fn parse_json_request(
     }
 }
 
-pub fn build_web3_response(request_id: u64, data: serde_json::Value) -> Response<Body> {
+pub fn build_web3_response(request_id: String, data: serde_json::Value) -> Response<Body> {
     let response_body = serde_json::json!({
         "jsonrpc": "2.0",
         "result": data,
@@ -41,6 +41,8 @@ pub fn build_json_response(data: String) -> Response<Body> {
     Response::builder()
         .status(StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/json")
+        .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
+        .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "*")
         .body(Body::from(data))
         .unwrap()
 }

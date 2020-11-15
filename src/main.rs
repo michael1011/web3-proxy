@@ -11,8 +11,6 @@ use web3::{transports, Web3};
 ///
 /// It will prevent malicious parties from abusing your generous service to the Ethereum world
 /// by blocking requests that would put an unreasonably high load on your node
-///
-/// And it also allows you to monitor requests to your node better
 #[derive(StructOpt, Debug)]
 #[structopt(name = "web3-proxy")]
 struct Args {
